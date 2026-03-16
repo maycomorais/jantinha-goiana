@@ -9566,7 +9566,7 @@ async function calcularFretePDV() {
   if (TABELA_FRETE_ADMIN?.[freteIndex]) {
     frete = TABELA_FRETE_ADMIN[freteIndex].loja || 0;
   } else {
-    if (dist <= 3.3) frete = 6000;
+    if (dist <= 3.1) frete = 6000;
     else if (dist <= 4.2) frete = 12000;
     else if (dist <= 5.2) frete = 18000;
     else if (dist <= 6.2) frete = 24000;
