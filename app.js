@@ -366,17 +366,27 @@ async function verificarHorario() {
       }
   }
 
-  // Atualiza Banner Promocional
-  if (data.banner_imagem && data.banner_produto_id) {
-    const bannerArea = document.querySelector('.banner-area');
-    if (bannerArea) {
-      const img = bannerArea.querySelector('img');
-      if (img) img.src = data.banner_imagem;
-      
-      bannerArea.onclick = function () {
-        clicarBanner(data.banner_produto_id);
-      };
-    }
+  // Atualiza Banners Promocionais (banner 1 e banner 2)
+  const bannerImgs = [document.getElementById('banner1-img') || document.querySelectorAll('.banner-track img')[0], document.getElementById('banner2-img') || document.querySelectorAll('.banner-track img')[1]];
+
+  // Banner 1
+  if (data.banner_imagem && data.banner_produto_id && bannerImgs[0]) {
+    bannerImgs[0].src = data.banner_imagem;
+    bannerImgs[0].style.display = 'block';
+    bannerImgs[0].style.cursor = 'pointer';
+    bannerImgs[0].onclick = function() { clicarBanner(data.banner_produto_id); };
+  } else if (bannerImgs[0] && !data.banner_imagem) {
+    bannerImgs[0].style.display = 'none';
+  }
+
+  // Banner 2
+  if (data.banner2_imagem && data.banner2_produto_id && bannerImgs[1]) {
+    bannerImgs[1].src = data.banner2_imagem;
+    bannerImgs[1].style.display = 'block';
+    bannerImgs[1].style.cursor = 'pointer';
+    bannerImgs[1].onclick = function() { clicarBanner(data.banner2_produto_id); };
+  } else if (bannerImgs[1] && !data.banner2_imagem) {
+    bannerImgs[1].style.display = 'none';
   }
   
   // Atualiza nome da loja no header
