@@ -6142,12 +6142,13 @@ let produtosCachePDV = [];
 let _cotacaoPDV = 1100;
 
 async function carregarPDV() {
-  // PDV carrega TODOS os produtos ativos (incluindo somente_balcao e pausados não)
+  // PDV carrega TODOS os produtos ativos (inclui pausado=null e pausado=false)
+  // .neq("pausado", true) exclui NULLs no PostgREST — usar .or() para incluir
   const { data } = await supa
     .from("produtos")
     .select("*")
     .eq("ativo", true)
-    .neq("pausado", true)
+    .or("pausado.is.null,pausado.eq.false")
     .order("categoria_slug")
     .order("nome");
   produtosCachePDV = data || [];
@@ -6277,7 +6278,8 @@ function renderizarGridPDV(filtroNome = "") {
 
 function _criarCardPDV(p) {
   const img = p.imagem_url || "";
-  const cfg = p.montagem_config;
+  let cfg = p.montagem_config;
+  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch(_) { cfg = null; } }
   const isKg = cfg && !Array.isArray(cfg) && cfg.__tipo === "kg";
   const precoKg = isKg ? cfg.preco_kg || p.preco || 0 : 0;
 
@@ -6345,7 +6347,11 @@ function _deveMostrarExtrasGlobais(produto) {
 }
 
 function adicionarItemPDV(p) {
-  const cfg = p.montagem_config;
+  // montagem_config pode chegar como string JSON de bancos antigos
+  let cfg = p.montagem_config;
+  if (typeof cfg === 'string') {
+    try { cfg = JSON.parse(cfg); } catch(_) { cfg = null; }
+  }
   const tipo = cfg && !Array.isArray(cfg) && cfg.__tipo ? cfg.__tipo : null;
 
   // Kg → modal de peso/balança
@@ -6407,7 +6413,8 @@ function adicionarItemPDV(p) {
 function _mostrarModalOpcoesPDV(produto, tipo) {
   document.getElementById("pdv-opcoes-modal")?.remove();
 
-  const cfg = produto.montagem_config || {};
+  let cfg = produto.montagem_config || {};
+  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch(_) { cfg = {}; } }
   const cacheKey = "pdv_" + (produto.id || Date.now());
   window._pdvProdCache[cacheKey] = produto;
 
@@ -9722,3 +9729,272 @@ async function calcularFretePDV() {
   btn.innerText = "📍 Rota";
   atualizarCarrinhoPDV();
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ONBOARDING — Configuração inicial do restaurante
+// ═══════════════════════════════════════════════════════════════
+
+const _OB_STEPS = [
+  {
+    id: 'identidade',
+    titulo: '🏪 Identidade da Loja',
+    descricao: 'Como seu restaurante vai aparecer para os clientes.',
+    campos: [
+      { id: 'ob-nome',      label: 'Nome do restaurante *', tipo: 'text',  placeholder: 'Ex: Açaí do João',   db: 'nome_restaurante' },
+      { id: 'ob-descricao', label: 'Descrição curta',        tipo: 'text',  placeholder: 'Ex: O melhor açaí da cidade', db: 'descricao_loja' },
+      { id: 'ob-whatsapp',  label: 'WhatsApp (com DDI)',      tipo: 'text',  placeholder: 'Ex: 595981234567',   db: 'whatsapp_loja' },
+      { id: 'ob-logo',      label: 'URL do Logo',             tipo: 'url',   placeholder: 'https://...',        db: 'logo_url' },
+    ]
+  },
+  {
+    id: 'visual',
+    titulo: '🎨 Identidade Visual',
+    descricao: 'Cor principal que aparece no app do cliente.',
+    campos: [
+      { id: 'ob-cor', label: 'Cor primária', tipo: 'color', placeholder: '#1a7a2e', db: 'cor_primaria',
+        extra: `<input type="text" id="ob-cor-hex" maxlength="7" placeholder="#1a7a2e"
+                  style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:0.9rem;width:120px;margin-left:8px"
+                  oninput="var v=this.value;if(v.startsWith('#')&&v.length===7){document.getElementById('ob-cor').value=v;document.documentElement.style.setProperty('--primary',v);}">
+                <span style="font-size:0.8rem;color:#888;margin-left:8px">← ou digita o hex</span>` },
+    ]
+  },
+  {
+    id: 'localizacao',
+    titulo: '📍 Localização da Loja',
+    descricao: 'Coordenadas usadas para calcular o frete de entrega.',
+    campos: [
+      { id: 'ob-lat', label: 'Latitude *',  tipo: 'text', placeholder: 'Ex: -25.2866',  db: 'coord_lat' },
+      { id: 'ob-lng', label: 'Longitude *', tipo: 'text', placeholder: 'Ex: -57.6470',  db: 'coord_lng' },
+    ],
+    dica: `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;margin-top:12px;font-size:0.83rem">
+      💡 <strong>Como pegar as coordenadas:</strong><br>
+      Abra <a href="https://maps.google.com" target="_blank" style="color:#2980b9">Google Maps</a>,
+      clique com o botão direito no seu endereço e copie os números que aparecem (Ex: -25.286, -57.647).
+    </div>`
+  },
+  {
+    id: 'pagamento',
+    titulo: '💳 Formas de Pagamento',
+    descricao: 'Configure PIX e Alias/Transferência para receber pagamentos.',
+    campos: [
+      { id: 'ob-pix',        label: 'Chave PIX',         tipo: 'text', placeholder: 'CPF, CNPJ, e-mail ou telefone', db: 'chave_pix' },
+      { id: 'ob-nome-pix',   label: 'Nome no PIX',       tipo: 'text', placeholder: 'Nome que aparece no QR Code',   db: 'nome_pix' },
+      { id: 'ob-alias',      label: 'Alias / Cuenta',    tipo: 'text', placeholder: 'banco@alias.com.py',           db: 'dados_alias' },
+      { id: 'ob-cotacao',    label: 'Cotação do Real (Gs)', tipo: 'number', placeholder: '1100',                    db: 'cotacao_real' },
+    ]
+  },
+  {
+    id: 'horario',
+    titulo: '🕐 Horário de Funcionamento',
+    descricao: 'Configure o horário padrão. Pode afinar por dia depois em Configurações.',
+    campos: [],
+    custom: `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+        <div>
+          <label style="font-size:0.82rem;font-weight:600;color:#555;display:block;margin-bottom:4px">Abre às</label>
+          <input type="time" id="ob-hora-abre" value="10:00"
+            style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:1rem">
+        </div>
+        <div>
+          <label style="font-size:0.82rem;font-weight:600;color:#555;display:block;margin-bottom:4px">Fecha às</label>
+          <input type="time" id="ob-hora-fecha" value="23:00"
+            style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:1rem">
+        </div>
+      </div>
+      <p style="font-size:0.78rem;color:#999;margin-top:8px">Este horário será aplicado a todos os dias da semana.</p>
+    `
+  },
+];
+
+let _obStep = 0;
+let _obData = {};
+
+async function iniciarOnboarding() {
+  // Só mostra se o banco não tiver nome configurado ainda
+  try {
+    const { data } = await supa.from('configuracoes').select('nome_restaurante').maybeSingle();
+    if (data?.nome_restaurante) return; // já configurado
+  } catch(_) { return; }
+
+  _obStep = 0;
+  _obData = {};
+  _obRender();
+  document.getElementById('modal-onboarding').style.display = 'flex';
+}
+
+function _obRender() {
+  const step    = _OB_STEPS[_obStep];
+  const total   = _OB_STEPS.length;
+  const isLast  = _obStep === total - 1;
+  const isFirst = _obStep === 0;
+
+  // Dots
+  const dots = document.getElementById('ob-dots');
+  if (dots) {
+    dots.innerHTML = _OB_STEPS.map((s, i) => `
+      <div style="height:6px;flex:1;border-radius:3px;background:${i <= _obStep ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.25)'}"></div>
+    `).join('');
+  }
+
+  // Step label
+  const lbl = document.getElementById('ob-step-label');
+  if (lbl) lbl.textContent = `Passo ${_obStep + 1} de ${total}`;
+
+  // Prev/Next buttons
+  const prev = document.getElementById('ob-btn-prev');
+  const next = document.getElementById('ob-btn-next');
+  if (prev) prev.style.visibility = isFirst ? 'hidden' : 'visible';
+  if (next) next.textContent = isLast ? '✅ Salvar & Concluir' : 'Próximo →';
+
+  // Body
+  const body = document.getElementById('ob-body');
+  if (!body) return;
+
+  let html = `
+    <h3 style="font-size:1.15rem;font-weight:800;color:#1a1a1a;margin-bottom:4px">${step.titulo}</h3>
+    <p style="font-size:0.85rem;color:#666;margin-bottom:18px">${step.descricao}</p>
+  `;
+
+  // Campos padrão
+  (step.campos || []).forEach(c => {
+    const savedVal = _obData[c.db] || '';
+    if (c.tipo === 'color') {
+      html += `
+        <div style="margin-bottom:14px">
+          <label style="font-size:0.82rem;font-weight:600;color:#555;display:block;margin-bottom:6px">${c.label}</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="color" id="${c.id}" value="${savedVal || '#1a7a2e'}"
+              style="width:52px;height:38px;border:none;border-radius:8px;cursor:pointer;padding:2px"
+              oninput="document.getElementById('ob-cor-hex').value=this.value;document.documentElement.style.setProperty('--primary',this.value)">
+            ${c.extra || ''}
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div style="margin-bottom:14px">
+          <label style="font-size:0.82rem;font-weight:600;color:#555;display:block;margin-bottom:6px">${c.label}</label>
+          <input type="${c.tipo}" id="${c.id}" value="${savedVal}"
+            placeholder="${c.placeholder}"
+            style="width:100%;padding:10px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:0.92rem;transition:border-color .2s"
+            onfocus="this.style.borderColor='var(--primary,#1a7a2e)'" onblur="this.style.borderColor='#e0e0e0'">
+        </div>`;
+    }
+  });
+
+  // Custom HTML (horário)
+  if (step.custom) html += step.custom;
+
+  // Dica
+  if (step.dica) html += step.dica;
+
+  body.innerHTML = html;
+
+  // Restaura valor cor hex se voltou ao passo
+  if (step.id === 'visual') {
+    const corVal = _obData['cor_primaria'] || '#1a7a2e';
+    const hexEl  = document.getElementById('ob-cor-hex');
+    if (hexEl) hexEl.value = corVal;
+    document.documentElement.style.setProperty('--primary', corVal);
+  }
+}
+
+function _obColetar() {
+  const step = _OB_STEPS[_obStep];
+
+  (step.campos || []).forEach(c => {
+    const el = document.getElementById(c.id);
+    if (el) _obData[c.db] = el.value.trim();
+  });
+
+  // Horário: monta grade semanal simples
+  if (step.id === 'horario') {
+    const abre  = document.getElementById('ob-hora-abre')?.value  || '10:00';
+    const fecha = document.getElementById('ob-hora-fecha')?.value || '23:00';
+    const dias  = ['seg','ter','qua','qui','sex','sab','dom'];
+    const grade = {};
+    dias.forEach(d => { grade[d] = { fechado: false, turnos: [{ abre, fecha }] }; });
+    _obData['horarios_semanais'] = grade;
+    _obData['loja_aberta'] = true;
+  }
+}
+
+function _obNext() {
+  _obColetar();
+  if (_obStep < _OB_STEPS.length - 1) {
+    _obStep++;
+    _obRender();
+  } else {
+    _obSalvar();
+  }
+}
+
+function _obPrev() {
+  _obColetar();
+  if (_obStep > 0) { _obStep--; _obRender(); }
+}
+
+function _obSkip() {
+  if (!confirm('Pular a configuração inicial? Você pode configurar depois em Configurações.')) return;
+  document.getElementById('modal-onboarding').style.display = 'none';
+}
+
+async function _obSalvar() {
+  const btn = document.getElementById('ob-btn-next');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+
+  try {
+    // Prepara dados — filtra vazios
+    const payload = {};
+    Object.entries(_obData).forEach(([k, v]) => {
+      if (v !== '' && v !== null && v !== undefined) payload[k] = v;
+    });
+
+    // Numérico
+    if (payload.cotacao_real) payload.cotacao_real = parseFloat(payload.cotacao_real) || 1100;
+    if (payload.coord_lat)    payload.coord_lat    = parseFloat(payload.coord_lat)    || 0;
+    if (payload.coord_lng)    payload.coord_lng    = parseFloat(payload.coord_lng)    || 0;
+
+    // Sincroniza logo_url e icone_url
+    if (payload.logo_url) payload.icone_url = payload.logo_url;
+
+    const { error } = await supa.from('configuracoes').update(payload).gt('id', 0);
+
+    if (error) throw new Error(error.message);
+
+    // Aplica cor imediatamente
+    if (payload.cor_primaria) document.documentElement.style.setProperty('--primary', payload.cor_primaria);
+
+    document.getElementById('modal-onboarding').style.display = 'none';
+
+    // Toast de sucesso
+    _pdvToast?.('✅ Configuração salva! O app já reflete os dados.') ||
+      alert('✅ Configuração inicial salva com sucesso!');
+
+    // Recarrega a aba de configurações se estiver aberta
+    if (document.getElementById('configuracoes')?.classList.contains('active')) {
+      carregarConfiguracoes();
+    }
+
+    // Atualiza brand
+    if (payload.nome_restaurante) {
+      const b = document.getElementById('brand-text');
+      if (b) b.textContent = payload.nome_restaurante.toUpperCase() + ' ADMIN';
+      NOME_RESTAURANTE = payload.nome_restaurante;
+    }
+
+  } catch(e) {
+    alert('Erro ao salvar: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Salvar & Concluir'; }
+  }
+}
+
+// Chamado no DOMContentLoaded após auth — só mostra se banco não configurado
+// (injeta no fluxo de inicialização existente)
+document.addEventListener('DOMContentLoaded', () => {
+  // Aguarda auth (1.5s) para não conflitar com o auth-overlay
+  setTimeout(async () => {
+    if (perfilUsuario && ['dono', 'adminMaster'].includes(perfilUsuario)) {
+      await iniciarOnboarding();
+    }
+  }, 1500);
+});
