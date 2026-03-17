@@ -7,29 +7,37 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#050505",
+  "theme_color": "#1a7a2e",
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "",
+      "src": "https://hyqbuoskykhfbfnjagmp.supabase.co/storage/v1/object/public/produtos/icone-loja-1773693487648.jpg",
       "sizes": "192x192",
-      "type": "https://hyqbuoskykhfbfnjagmp.supabase.co/storage/v1/object/public/produtos/icone-loja-1773693487648.jpg",
+      "type": "image/jpeg",
       "purpose": "any maskable"
     },
     {
-      "src": "",
+      "src": "https://hyqbuoskykhfbfnjagmp.supabase.co/storage/v1/object/public/produtos/icone-loja-1773693487648.jpg",
       "sizes": "512x512",
-      "type": "https://hyqbuoskykhfbfnjagmp.supabase.co/storage/v1/object/public/produtos/icone-loja-1773693487648.jpg",
+      "type": "image/jpeg",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["food", "shopping"],
+  "categories": [
+    "food",
+    "shopping"
+  ],
   "shortcuts": [
     {
       "name": "Fazer Pedido",
       "short_name": "Pedido",
       "url": "/index.html",
-      "icons": [{ "src": "", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "https://hyqbuoskykhfbfnjagmp.supabase.co/storage/v1/object/public/produtos/icone-loja-1773693487648.jpg",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }

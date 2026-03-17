@@ -7,11 +7,12 @@ let COTACAO_REAL = 1100;
 let NOME_RESTAURANTE_APP = '';  // populado do banco em verificarHorario()
 let autoConfirmTimer = null;
 
-// DADOS DE PAGAMENTO (Pix e Alias)
-const CHAVE_PIX = '';
-const NOME_PIX = '';
-const DADOS_ALIAS = '';
-const ALIAS_PY = '';
+// DADOS DE PAGAMENTO — populados do banco em verificarHorario()
+let CHAVE_PIX = '';
+let NOME_PIX = '';
+let DADOS_ALIAS = '';
+let ALIAS_PY = '';
+let WHATSAPP_LOJA_APP = '';
 
 function iniciarTimerAutoConfirmacao(pedidoId) {
     // 4 horas em milissegundos
@@ -302,6 +303,13 @@ async function verificarHorario() {
 
   if (data.cotacao_real) COTACAO_REAL = data.cotacao_real;
   if (data.tabela_frete && Array.isArray(data.tabela_frete)) TABELA_FRETE = data.tabela_frete;
+
+  // ── Dados de pagamento do banco ────────────────────────────────
+  if (data.chave_pix)    CHAVE_PIX    = data.chave_pix;
+  if (data.nome_pix)     NOME_PIX     = data.nome_pix;
+  if (data.dados_alias)  DADOS_ALIAS  = data.dados_alias;
+  if (data.nome_alias)   ALIAS_PY     = data.nome_alias;
+  if (data.whatsapp_loja) WHATSAPP_LOJA_APP = data.whatsapp_loja;
 
   const agora = new Date();
   const horaAtual = agora.getHours() * 60 + agora.getMinutes();
@@ -2258,7 +2266,7 @@ function _mostrarModalEnvio(msg, numeroPedido) {
 }
 
 function _abrirZapEFechar(msg, numeroPedido, modal, resolve) {
-  window.open(`https://wa.me/${FONE_LOJA}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(`https://wa.me/${WHATSAPP_LOJA_APP || FONE_LOJA}?text=${encodeURIComponent(msg)}`, '_blank');
   if (modal) modal.remove();
 
   // Limpa carrinho e fecha checkout

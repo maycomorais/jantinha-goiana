@@ -2103,7 +2103,7 @@ function enviarRotaZap() {
         .then();
 
       msg += `📦 *PEDIDO #${p.uid_temporal || p.id}*\n`;
-      msg += `👤 ${p.cliente_nome} | 📞 ${p.cliente_telefone || ""}\n`;
+      msg += `👤 ${p.cliente_nome || 'Cliente'} | 📞 ${p.cliente_telefone || ''}\n`;
 
       if (p.itens && Array.isArray(p.itens)) {
         // Separa bebidas (para levar imediatamente) do restante
@@ -2158,9 +2158,10 @@ function enviarRotaZap() {
         msg += `🏠 ${p.endereco_entrega || "Retirada"}\n`;
       }
 
-      // LÓGICA DE PAGAMENTO (Restaurada)
-      const forma = (p.forma_pagamento || "").toLowerCase();
-      const totalFmt = p.total_geral.toLocaleString("es-PY");
+      // LÓGICA DE PAGAMENTO
+      const forma = (p.forma_pagamento || '').toLowerCase();
+      const totalGeral = p.total_geral || 0;
+      const totalFmt = totalGeral.toLocaleString('es-PY');
 
       if (
         forma.includes("pix") ||
@@ -2175,32 +2176,24 @@ function enviarRotaZap() {
       ) {
         msg += `💳 *Cobrar Cartão: Gs ${totalFmt}*\n`;
       } else {
-        // Dinheiro / Efetivo
         msg += `💰 *COBRAR: Gs ${totalFmt}*\n`;
 
-        // Lógica de Troco
-        const obsPag = p.obs_pagamento || "";
+        const obsPag = p.obs_pagamento || '';
         const nums = obsPag.match(/\d+/g);
         if (nums) {
-          // Pega o maior número encontrado na obs como valor de troco
-          // Ex: "Troco para 100" -> 100.000
-          let valorTroco = parseInt(nums.join(""));
+          let valorTroco = parseInt(nums.join(''));
           if (valorTroco < 1000) valorTroco *= 1000;
-
-          if (valorTroco > p.total_geral) {
-            const devolver = valorTroco - p.total_geral;
+          if (valorTroco > totalGeral) {
+            const devolver = valorTroco - totalGeral;
             msg += `🔄 Troco p/ ${valorTroco.toLocaleString()} (Levar Gs ${devolver.toLocaleString()})\n`;
           }
         }
-        // Adiciona obs se não for só numero
         if (obsPag && !nums) msg += `⚠️ Obs: ${obsPag}\n`;
       }
 
       msg += `-----------------\n`;
-      taxaTotal +=
-        parseFloat(p.frete_motoboy) ||
-        0 ||
-        (typeof TAXA_MOTOBOY !== "undefined" ? TAXA_MOTOBOY : 5000);
+      const _freteM = parseFloat(p.frete_motoboy);
+      taxaTotal += isNaN(_freteM) ? (TAXA_MOTOBOY || 0) : _freteM;
     } catch (e) {
       console.error("Erro ao processar pedido na rota:", e);
     }
