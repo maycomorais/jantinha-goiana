@@ -1855,6 +1855,36 @@ async function calcularFrete() {
     return;
   }
 
+  // Verifica se a permissão já foi bloqueada antes de chamar getCurrentPosition
+  if (navigator.permissions) {
+    navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+      if (result.state === 'denied') {
+        // Permissão bloqueada permanentemente no browser — instrui o usuário
+        msg.innerHTML = '<span style="color:#e74c3c">⚠️ GPS bloqueado no navegador.</span>';
+        boxErro.innerHTML = `
+          <p><strong><i class="fas fa-lock"></i> Permissão de localização bloqueada</strong></p>
+          <p style="margin-top:6px;font-size:0.85rem">Para habilitar: clique no ícone de cadeado/info na barra de endereço do navegador → <strong>Localização</strong> → <strong>Permitir</strong> → recarregue a página.</p>
+          <label style="display:flex;align-items:center;gap:10px;margin-top:10px;cursor:pointer;">
+            <input type="checkbox" id="check-sem-gps" style="width:20px;height:20px;">
+            <span data-lang-key="gps-erro-check">Enviaré mi ubicación por WhatsApp</span>
+          </label>`;
+        boxErro.style.display = 'block';
+        btn.innerText = '📍 Tentar Novamente';
+        btn.disabled = false;
+        return;
+      }
+      // Permissão OK ou ainda não decidida — chama normalmente
+      _executarGetPosition(btn, msg, boxErro);
+    }).catch(() => {
+      // API permissions não suportada — tenta diretamente
+      _executarGetPosition(btn, msg, boxErro);
+    });
+  } else {
+    _executarGetPosition(btn, msg, boxErro);
+  }
+}
+
+function _executarGetPosition(btn, msg, boxErro) {
   navigator.geolocation.getCurrentPosition(
     (position) => {
       localCliente = { lat: position.coords.latitude, lng: position.coords.longitude };
@@ -1901,12 +1931,34 @@ async function calcularFrete() {
       btn.disabled = true;
       atualizarTotalCheckout();
     },
-    (error) => {
-      msg.innerHTML = '<span style="color:#e74c3c">Não foi possível obter sua localização</span>';
+    (err) => {
+      let errMsg = 'Não foi possível obter sua localização.';
+      let instrucao = '';
+      if (err.code === 1) {
+        // PERMISSION_DENIED
+        errMsg = '⚠️ Permissão de GPS negada.';
+        instrucao = '<p style="margin-top:6px;font-size:0.85rem">Para habilitar: clique no ícone de cadeado/info na barra de endereço → <strong>Localização</strong> → <strong>Permitir</strong> → recarregue a página.</p>';
+      } else if (err.code === 2) {
+        // POSITION_UNAVAILABLE
+        errMsg = '⚠️ Localização indisponível. Verifique se o GPS está ativo.';
+      } else if (err.code === 3) {
+        // TIMEOUT
+        errMsg = '⚠️ Tempo esgotado ao obter localização. Tente novamente.';
+      }
+      msg.innerHTML = `<span style="color:#e74c3c">${errMsg}</span>`;
+      boxErro.innerHTML = `
+        <p><strong><i class="fas fa-info-circle"></i> GPS não funcionou?</strong></p>
+        ${instrucao}
+        <p style="margin-top:6px">Marque a opção abaixo para combinar o frete pelo WhatsApp.</p>
+        <label style="display:flex;align-items:center;gap:10px;margin-top:8px;cursor:pointer;">
+          <input type="checkbox" id="check-sem-gps" style="width:20px;height:20px;">
+          <span data-lang-key="gps-erro-check">Enviaré mi ubicación por WhatsApp</span>
+        </label>`;
       boxErro.style.display = 'block';
       btn.innerText = '📍 Tentar Novamente';
       btn.disabled = false;
-    }
+    },
+    { timeout: 12000, maximumAge: 60000, enableHighAccuracy: true }
   );
 }
 
@@ -2037,19 +2089,36 @@ async function enviarZap() {
       geo_lng: localCliente ? localCliente.lng.toString() : null,
       cliente_nome: nome,
       cliente_telefone: telCompleto,
-      dados_factura: document.getElementById('check-factura').checked
-        ? { ruc: document.getElementById('cli-ruc').value, razao: document.getElementById('cli-zao').value }
+      dados_factura: document.getElementById('check-factura')?.checked
+        ? { ruc: document.getElementById('cli-ruc')?.value || '', razao: document.getElementById('cli-zao')?.value || '' }
         : null,
     };
 
-    const { data: pedidoSalvo, error } = await supa.from('pedidos').insert([pedidoDb]).select().single();
+    // Tenta INSERT; se falhar por coluna inexistente (dados_factura), faz fallback sem ela
+    let payloadFinal = { ...pedidoDb };
+    let { data: pedidoSalvo, error } = await supa.from('pedidos').insert([payloadFinal]).select().single();
 
     if (error) {
-      console.error('Erro ao salvar pedido:', error);
-      alert('⚠️ Erro ao salvar pedido no sistema. Tente novamente.');
-      return;
+      console.error('Erro ao salvar pedido — código:', error.code, '| msg:', error.message, '| hint:', error.hint);
+
+      // Fallback: coluna dados_factura pode não existir ainda no banco
+      // SQL para criar: ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dados_factura JSONB;
+      if ((error.code === '42703' || error.message?.includes('dados_factura')) && payloadFinal.dados_factura !== undefined) {
+        console.warn('[pedido] Coluna dados_factura ausente — tentando sem ela...');
+        delete payloadFinal.dados_factura;
+        const res2 = await supa.from('pedidos').insert([payloadFinal]).select().single();
+        if (res2.error) {
+          console.error('Erro no insert de fallback:', res2.error);
+          alert(`⚠️ Erro ao salvar pedido.\n\nDetalhe: ${res2.error.message}\n\nMostre este erro ao suporte.`);
+          return;
+        }
+        pedidoSalvo = res2.data;
+      } else {
+        alert(`⚠️ Erro ao salvar pedido no sistema.\n\nDetalhe: ${error.message}\n\nTente novamente ou contate o suporte.`);
+        return;
+      }
     }
-    
+
     if (pedidoSalvo) {
       pedidoDbId = pedidoSalvo.id;
       numeroPedido = pedidoSalvo.id; // USA O ID DO BANCO
