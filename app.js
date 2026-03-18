@@ -527,6 +527,7 @@ async function renderMenu() {
       img: p.imagem_url,
       montagem: p.montagem_config,
       e_montavel: p.e_montavel,
+      categoria_slug: cat || null,   // ← necessário para filtro de bebidas no motoboy
       subcategoria_slug: sub || null,
     };
 
@@ -1267,15 +1268,16 @@ function adicionarDoModal() {
   const preparoEscolhido = preparoSel ? preparoSel.value : '';
 
   carrinho.push({
-    id:       Date.now(),
-    nome:     prodAtual.nome,
-    variacao: variacao || '',          // Guardado separado para não duplicar o nome
-    preparo:  preparoEscolhido,        // Opção de preparo (ex: "Flambado", "Batata Frita")
-    preco:    precoFinal,
-    qtd:      qtd,
-    montagem: montagem.filter(Boolean),
-    obs:      document.getElementById('modal-obs').value,
-    img:      prodAtual._variacaoImg || prodAtual.img,
+    id:             Date.now(),
+    nome:           prodAtual.nome,
+    variacao:       variacao || '',
+    preparo:        preparoEscolhido,
+    preco:          precoFinal,
+    qtd:            qtd,
+    montagem:       montagem.filter(Boolean),
+    obs:            document.getElementById('modal-obs').value,
+    img:            prodAtual._variacaoImg || prodAtual.img,
+    categoria_slug: prodAtual.categoria_slug || '',  // para filtro bebidas no motoboy
     ...(pizzaMeta ? { pizzaMeta } : {}),
   });
 
@@ -1537,46 +1539,8 @@ function adicionarUpsell(item) {
 }
 
 // ==========================================
-// CUPOM DE DESCONTO
+// CUPOM DE DESCONTO — implementação via banco em async function aplicarCupom() abaixo
 // ==========================================
-function aplicarCupom() {
-  const codigo = document.getElementById('cupom-codigo')?.value?.trim().toUpperCase();
-  const msgBox = document.getElementById('cupom-msg');
-  
-  if (!codigo) {
-    msgBox.innerHTML = '<span style="color:#e74c3c">Digite um código</span>';
-    msgBox.style.display = 'block';
-    return;
-  }
-  
-  // Cupons de exemplo - você pode buscar do banco de dados
-  const cupons = {
-    'BEMVINDO10': { tipo: 'percentual', valor: 10, min: 50000 },
-    'SUSHI20': { tipo: 'percentual', valor: 20, min: 100000 },
-    'FRETEGRATIS': { tipo: 'frete', valor: 0, min: 0 }
-  };
-  
-  const cupom = cupons[codigo];
-  
-  if (!cupom) {
-    msgBox.innerHTML = '<span style="color:#e74c3c">❌ Cupom inválido</span>';
-    msgBox.style.display = 'block';
-    cupomAplicado = null;
-  } else {
-    const subtotal = carrinho.reduce((a, i) => a + i.preco * i.qtd, 0);
-    if (subtotal < cupom.min) {
-      msgBox.innerHTML = `<span style="color:#e74c3c">Valor mínimo: Gs ${cupom.min.toLocaleString('es-PY')}</span>`;
-      msgBox.style.display = 'block';
-      cupomAplicado = null;
-    } else {
-      cupomAplicado = { codigo, ...cupom };
-      msgBox.innerHTML = '<span style="color:#27ae60">✅ Cupom aplicado!</span>';
-      msgBox.style.display = 'block';
-    }
-  }
-  
-  atualizarTotalCheckout();
-}
 
 function atualizarTotalCheckout() {
   const totalItens = carrinho.reduce((a, i) => a + i.preco * i.qtd, 0);
@@ -2450,7 +2414,7 @@ function _tentarCanalRealtime(pedidoId, uid) {
     try {
         if (_trackingChannel) { _trackingChannel.unsubscribe(); _trackingChannel = null; }
         _trackingChannel = supa
-            .channel(`sushi-track-${pedidoId}-${Date.now()}`)
+            .channel(`app-track-${pedidoId}-${Date.now()}`)
             .on('postgres_changes', {
                 event: 'UPDATE', schema: 'public', table: 'pedidos',
                 filter: `id=eq.${pedidoId}`

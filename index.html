@@ -9,79 +9,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Delivery" id="meta-app-title">
     <link rel="manifest" href="manifest.json" id="link-manifest">
-    <script>
-    // ── Manifest Dinâmico ─────────────────────────────────────────────────
-    // Busca nome/cor/ícone do banco e injeta no manifest ANTES do
-    // beforeinstallprompt ser disparado pelo browser (ocorre poucos segundos
-    // após DOMContentLoaded). Usa a anon key pública para uma query simples.
-    (async function _injectManifest() {
-      try {
-        // Lê o manifest base
-        const res = await fetch('manifest.json');
-        const m   = await res.json();
-
-        // Busca config do banco (mesmo endpoint do supabaseClient.js)
-        const SUPA_URL = document.querySelector('script[src="supabaseClient.js"]')
-          ? null : null; // será resolvido depois da lib carregar
-        // Abordagem direta: chama a REST API sem o SDK (disponível antes do SDK)
-        const cfgRes = await fetch(
-          `${typeof _SUPABASE_URL !== 'undefined' ? _SUPABASE_URL : ''}/rest/v1/configuracoes?select=nome_restaurante,cor_primaria,logo_url,icone_url&limit=1`,
-          {
-            headers: {
-              'apikey':  typeof _SUPABASE_KEY !== 'undefined' ? _SUPABASE_KEY : '',
-              'Accept':  'application/json',
-            }
-          }
-        );
-
-        if (cfgRes.ok) {
-          const rows = await cfgRes.json();
-          const cfg  = rows?.[0] || {};
-          if (cfg.nome_restaurante) {
-            m.name       = cfg.nome_restaurante;
-            m.short_name = cfg.nome_restaurante.length > 12
-              ? cfg.nome_restaurante.substring(0, 12)
-              : cfg.nome_restaurante;
-            // Apple title
-            const metaTitle = document.getElementById('meta-app-title');
-            if (metaTitle) metaTitle.setAttribute('content', cfg.nome_restaurante);
-            document.title = cfg.nome_restaurante + ' — Delivery';
-          }
-          if (cfg.cor_primaria) m.theme_color = cfg.cor_primaria;
-          const iconUrl = cfg.logo_url || cfg.icone_url || '';
-          if (iconUrl) {
-            m.icons = [
-              { src: iconUrl, sizes: '192x192', type: 'image/jpeg', purpose: 'any maskable' },
-              { src: iconUrl, sizes: '512x512', type: 'image/jpeg', purpose: 'any maskable' },
-            ];
-            if (m.shortcuts?.[0]?.icons) m.shortcuts[0].icons = [{ src: iconUrl, sizes: '96x96' }];
-          }
-        }
-
-        // Injeta manifest dinâmico via Blob
-        const blob   = new Blob([JSON.stringify(m)], { type: 'application/manifest+json' });
-        const blobUrl = URL.createObjectURL(blob);
-        const link   = document.getElementById('link-manifest');
-        if (link) link.setAttribute('href', blobUrl);
-
-      } catch(e) {
-        // Falha silenciosa — manifest estático é usado como fallback
-      }
-    })();
-    </script>
+    <!-- manifest dinâmico injetado após supabaseClient.js carregar (ver script no fim do body) -->
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
-    <title>Restaurante</title>
+    <title>Delivery</title>
     <!-- Open Graph / WhatsApp / Facebook -->
     <meta property="og:type"        content="website">
-    <meta property="og:url"         content="https://linkpy.online/">
-    <meta property="og:title"       content="Restaurante 🥗">
+    <meta property="og:url"         content="">
+    <meta property="og:title"       content="Delivery">
     <meta property="og:description" content="Pide tu plato favorito con entrega rápida">
     <meta property="og:image"       content="">
     <meta property="og:image:width"  content="1200">
     <meta property="og:image:height" content="630">
     <!-- Twitter Card -->
     <meta name="twitter:card"        content="summary_large_image">
-    <meta name="twitter:title"       content="Restaurante 🥗">
+    <meta name="twitter:title"       content="Delivery">
     <meta name="twitter:description" content="Pide tu plato favorito con entrega rápida">
     <meta name="twitter:image"       content="">
     <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32x32.png">
@@ -882,6 +823,46 @@ window.addEventListener('DOMContentLoaded', () => {
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabaseClient.js"></script>
     <script src="app.js"></script>
+    <script>
+    // ── Manifest Dinâmico — roda APÓS supabaseClient.js carregar ─────────
+    (async function _injectManifest() {
+      try {
+        const res = await fetch('manifest.json');
+        const m   = await res.json();
+        // _SUPABASE_URL e _SUPABASE_KEY já estão disponíveis do supabaseClient.js
+        const supaUrl = (typeof _SUPABASE_URL !== 'undefined') ? _SUPABASE_URL : '';
+        const supaKey = (typeof _SUPABASE_KEY !== 'undefined') ? _SUPABASE_KEY : '';
+        if (!supaUrl || !supaKey) return;
+        const cfgRes = await fetch(
+          `${supaUrl}/rest/v1/configuracoes?select=nome_restaurante,cor_primaria,logo_url,icone_url&limit=1`,
+          { headers: { 'apikey': supaKey, 'Accept': 'application/json' } }
+        );
+        if (!cfgRes.ok) return;
+        const rows = await cfgRes.json();
+        const cfg  = rows?.[0] || {};
+        if (cfg.nome_restaurante) {
+          m.name       = cfg.nome_restaurante;
+          m.short_name = cfg.nome_restaurante.substring(0, 12);
+          const mt = document.getElementById('meta-app-title');
+          if (mt) mt.setAttribute('content', cfg.nome_restaurante);
+          document.title = cfg.nome_restaurante + ' — Delivery';
+        }
+        if (cfg.cor_primaria) m.theme_color = cfg.cor_primaria;
+        const iconUrl = cfg.logo_url || cfg.icone_url || '';
+        if (iconUrl) {
+          m.icons = [
+            { src: iconUrl, sizes: '192x192', type: 'image/jpeg', purpose: 'any maskable' },
+            { src: iconUrl, sizes: '512x512', type: 'image/jpeg', purpose: 'any maskable' },
+          ];
+          if (m.shortcuts?.[0]?.icons) m.shortcuts[0].icons = [{ src: iconUrl, sizes: '96x96' }];
+        }
+        const blob    = new Blob([JSON.stringify(m)], { type: 'application/manifest+json' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link    = document.getElementById('link-manifest');
+        if (link) link.setAttribute('href', blobUrl);
+      } catch(_) { /* fallback: manifest estático */ }
+    })();
+    </script>
     <script>
         // Registro do Service Worker para PWA
         if ('serviceWorker' in navigator) {
