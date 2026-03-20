@@ -1643,44 +1643,63 @@ function verificarPagamento() {
     infoDiv.innerHTML = `<strong>💳 Chave Pix:</strong><br>${CHAVE_PIX}<br><small>Titular: ${NOME_PIX}</small><br><strong style="color:#27ae60;font-size:1rem">💰 Valor: R$ ${totalBrl}</strong>`;
   } else if (pag === 'CartaoBR') {
     infoDiv.style.display = 'block';
-    const _totalItensCartao = carrinho.reduce((a, i) => a + i.preco * i.qtd, 0);
-    let _freteCartao = modoEntrega === 'delivery' ? freteCalculado : 0;
-    let _descontoCartao = 0;
-    if (cupomAplicado) {
-      if (cupomAplicado.tipo === 'percentual') _descontoCartao = Math.round(_totalItensCartao * (cupomAplicado.valor / 100));
-      else if (cupomAplicado.tipo === 'frete') _freteCartao = 0;
-    }
-    const _totalGsCartao = _totalItensCartao - _descontoCartao + _freteCartao;
-    function _renderCartaoBR() {
-      const taxa = _cartaoBRTipo === 'debito' ? TAXA_DEBITO_BR : TAXA_CREDITO_BR;
-      const brl  = COTACAO_REAL > 0 ? ((_totalGsCartao / COTACAO_REAL) * (1 + taxa / 100)).toFixed(2) : '---';
-      infoDiv.innerHTML = `
+
+    // Recalcula o total sempre (arrow fn para escopo seguro em qualquer modo JS)
+    const _calcTotalGsCartao = () => {
+      const totalItens = carrinho.reduce((a, i) => a + i.preco * i.qtd, 0);
+      let frete    = modoEntrega === 'delivery' ? freteCalculado : 0;
+      let desconto = 0;
+      if (cupomAplicado) {
+        if (cupomAplicado.tipo === 'percentual')
+          desconto = Math.round(totalItens * (cupomAplicado.valor / 100));
+        else if (cupomAplicado.tipo === 'frete')
+          frete = 0;
+      }
+      return totalItens - desconto + frete;
+    };
+
+    const _renderCartaoBR = () => {
+      const totalGs = _calcTotalGsCartao();
+      const taxa    = _cartaoBRTipo === 'debito' ? TAXA_DEBITO_BR : TAXA_CREDITO_BR;
+      const brl     = (COTACAO_REAL > 0 && totalGs > 0)
+                        ? ((totalGs / COTACAO_REAL) * (1 + taxa / 100)).toFixed(2)
+                        : '---';
+      const elInfo  = document.getElementById('info-pagamento-extra');
+      if (!elInfo) return;
+      elInfo.style.display = 'block';
+      elInfo.innerHTML = `
         <div style="font-weight:700;margin-bottom:8px;font-size:0.9rem">💳🇧🇷 Cartão Brasileiro</div>
         <div style="display:flex;gap:8px;margin-bottom:10px">
           <button type="button" onclick="window._setBRTipo('debito')"
             style="flex:1;padding:9px 6px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.83rem;
-                   border:2px solid ${_cartaoBRTipo==='debito'?'#1a7a2e':'#ccc'};
-                   background:${_cartaoBRTipo==='debito'?'#eafaf1':'#f8f9fa'};
-                   color:${_cartaoBRTipo==='debito'?'#1a7a2e':'#555'}">
-            💳 Débito<br><small style="font-weight:400">${TAXA_DEBITO_BR.toFixed(2).replace('.',',')}%</small>
+                   border:2px solid ${_cartaoBRTipo === 'debito' ? '#1a7a2e' : '#ccc'};
+                   background:${_cartaoBRTipo === 'debito' ? '#eafaf1' : '#f8f9fa'};
+                   color:${_cartaoBRTipo === 'debito' ? '#1a7a2e' : '#555'}">
+            💳 Débito<br><small style="font-weight:400">${TAXA_DEBITO_BR.toFixed(2).replace('.', ',')}%</small>
           </button>
           <button type="button" onclick="window._setBRTipo('credito')"
             style="flex:1;padding:9px 6px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.83rem;
-                   border:2px solid ${_cartaoBRTipo==='credito'?'#1a7a2e':'#ccc'};
-                   background:${_cartaoBRTipo==='credito'?'#eafaf1':'#f8f9fa'};
-                   color:${_cartaoBRTipo==='credito'?'#1a7a2e':'#555'}">
-            💳 Crédito<br><small style="font-weight:400">${TAXA_CREDITO_BR.toFixed(2).replace('.',',')}%</small>
+                   border:2px solid ${_cartaoBRTipo === 'credito' ? '#1a7a2e' : '#ccc'};
+                   background:${_cartaoBRTipo === 'credito' ? '#eafaf1' : '#f8f9fa'};
+                   color:${_cartaoBRTipo === 'credito' ? '#1a7a2e' : '#555'}">
+            💳 Crédito<br><small style="font-weight:400">${TAXA_CREDITO_BR.toFixed(2).replace('.', ',')}%</small>
           </button>
         </div>
         <div style="background:#fff;border:1.5px solid #1a7a2e;border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:0.78rem;color:#666;margin-bottom:2px">Valor a cobrar (com taxa)</div>
-          <div style="font-size:1.3rem;font-weight:900;color:#1a7a2e">R$ ${brl}</div>
+          <div style="font-size:1.3rem;font-weight:900;color:#1a7a2e">
+            ${brl === '---' ? '<span style="font-size:0.9rem;color:#999">Adicione itens ao carrinho</span>' : 'R$ ' + brl}
+          </div>
         </div>`;
-    }
-    window._setBRTipo = function(tipo) {
-      _cartaoBRTipo = tipo;
-      _renderCartaoBR();
     };
+
+    // Expõe globalmente para os botões de toggle chamarem após o bloco sair de escopo
+    window._renderCartaoBR = _renderCartaoBR;
+    window._setBRTipo = (tipo) => {
+      _cartaoBRTipo = tipo;
+      window._renderCartaoBR();
+    };
+
     _renderCartaoBR();
   } else if (pag === 'Transferencia') {
     infoDiv.style.display = 'block';
