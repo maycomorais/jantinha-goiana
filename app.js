@@ -4,6 +4,9 @@
 const FONE_LOJA = ''; 
 const COORD_LOJA = { lat: 0, lng: 0 };  // populado do banco em verificarHorario()
 let COTACAO_REAL = 1100;
+let TAXA_DEBITO_BR  = 1.99;   // populado do banco em verificarHorario()
+let TAXA_CREDITO_BR = 4.98;   // populado do banco em verificarHorario()
+let _cartaoBRTipo   = 'debito'; // estado do toggle débito/crédito no checkout
 let NOME_RESTAURANTE_APP = '';  // populado do banco em verificarHorario()
 let autoConfirmTimer = null;
 
@@ -302,6 +305,8 @@ async function verificarHorario() {
   if (!data) return;
 
   if (data.cotacao_real) COTACAO_REAL = data.cotacao_real;
+  if (data.taxa_debito  != null) TAXA_DEBITO_BR  = Number(data.taxa_debito);
+  if (data.taxa_credito != null) TAXA_CREDITO_BR = Number(data.taxa_credito);
   if (data.tabela_frete && Array.isArray(data.tabela_frete)) TABELA_FRETE = data.tabela_frete;
 
   // ── Dados de pagamento do banco ────────────────────────────────
@@ -1636,6 +1641,47 @@ function verificarPagamento() {
     const totalGs = totalItens - desconto + freteAplicado;
     const totalBrl = COTACAO_REAL > 0 ? (totalGs / COTACAO_REAL).toFixed(2) : '---';
     infoDiv.innerHTML = `<strong>💳 Chave Pix:</strong><br>${CHAVE_PIX}<br><small>Titular: ${NOME_PIX}</small><br><strong style="color:#27ae60;font-size:1rem">💰 Valor: R$ ${totalBrl}</strong>`;
+  } else if (pag === 'CartaoBR') {
+    infoDiv.style.display = 'block';
+    const _totalItensCartao = carrinho.reduce((a, i) => a + i.preco * i.qtd, 0);
+    let _freteCartao = modoEntrega === 'delivery' ? freteCalculado : 0;
+    let _descontoCartao = 0;
+    if (cupomAplicado) {
+      if (cupomAplicado.tipo === 'percentual') _descontoCartao = Math.round(_totalItensCartao * (cupomAplicado.valor / 100));
+      else if (cupomAplicado.tipo === 'frete') _freteCartao = 0;
+    }
+    const _totalGsCartao = _totalItensCartao - _descontoCartao + _freteCartao;
+    function _renderCartaoBR() {
+      const taxa = _cartaoBRTipo === 'debito' ? TAXA_DEBITO_BR : TAXA_CREDITO_BR;
+      const brl  = COTACAO_REAL > 0 ? ((_totalGsCartao / COTACAO_REAL) * (1 + taxa / 100)).toFixed(2) : '---';
+      infoDiv.innerHTML = `
+        <div style="font-weight:700;margin-bottom:8px;font-size:0.9rem">💳🇧🇷 Cartão Brasileiro</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button type="button" onclick="window._setBRTipo('debito')"
+            style="flex:1;padding:9px 6px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.83rem;
+                   border:2px solid ${_cartaoBRTipo==='debito'?'#1a7a2e':'#ccc'};
+                   background:${_cartaoBRTipo==='debito'?'#eafaf1':'#f8f9fa'};
+                   color:${_cartaoBRTipo==='debito'?'#1a7a2e':'#555'}">
+            💳 Débito<br><small style="font-weight:400">${TAXA_DEBITO_BR.toFixed(2).replace('.',',')}%</small>
+          </button>
+          <button type="button" onclick="window._setBRTipo('credito')"
+            style="flex:1;padding:9px 6px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.83rem;
+                   border:2px solid ${_cartaoBRTipo==='credito'?'#1a7a2e':'#ccc'};
+                   background:${_cartaoBRTipo==='credito'?'#eafaf1':'#f8f9fa'};
+                   color:${_cartaoBRTipo==='credito'?'#1a7a2e':'#555'}">
+            💳 Crédito<br><small style="font-weight:400">${TAXA_CREDITO_BR.toFixed(2).replace('.',',')}%</small>
+          </button>
+        </div>
+        <div style="background:#fff;border:1.5px solid #1a7a2e;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:0.78rem;color:#666;margin-bottom:2px">Valor a cobrar (com taxa)</div>
+          <div style="font-size:1.3rem;font-weight:900;color:#1a7a2e">R$ ${brl}</div>
+        </div>`;
+    }
+    window._setBRTipo = function(tipo) {
+      _cartaoBRTipo = tipo;
+      _renderCartaoBR();
+    };
+    _renderCartaoBR();
   } else if (pag === 'Transferencia') {
     infoDiv.style.display = 'block';
     infoDiv.innerHTML = `<strong>🏦 Dados para Transferência:</strong><br>${DADOS_ALIAS}<br>${ALIAS_PY}`;
@@ -1982,6 +2028,11 @@ async function enviarZap() {
   const tel = document.getElementById('cli-tel').value.trim();
   const pag = document.getElementById('forma-pag').value;
 
+  // Resolve CartaoBR → nome legível para salvar no banco / WhatsApp
+  const pagFinal = pag === 'CartaoBR'
+    ? (_cartaoBRTipo === 'debito' ? 'Cartão BR - Débito' : 'Cartão BR - Crédito')
+    : pag;
+
   if (!nome || !tel || !pag) return alert('Preencha todos os campos obrigatórios!');
 
   // Troco obrigatório quando pagamento em Efetivo
@@ -2068,7 +2119,7 @@ async function enviarZap() {
       frete_motoboy: modoEntrega === 'delivery' ? freteMotoboy : 0,
       desconto_cupom: desconto,
       total_geral: totalGeral,
-      forma_pagamento: pag,
+      forma_pagamento: pagFinal,
       obs_pagamento: pag === 'Efetivo' ? document.getElementById('troco-valor').value
                    : pag === 'Multipagamento' ? JSON.stringify(_coletarMultiPagamento())
                    : '',
@@ -2202,8 +2253,13 @@ async function enviarZap() {
        if (p.troco) msg += ` (Troco p/ Gs ${parseFloat(p.troco).toLocaleString('es-PY')})`;
        msg += '\n';
      });
+  } else if (pag === 'CartaoBR') {
+     const taxa = _cartaoBRTipo === 'debito' ? TAXA_DEBITO_BR : TAXA_CREDITO_BR;
+     const brl  = COTACAO_REAL > 0 ? ((totalGeral / COTACAO_REAL) * (1 + taxa / 100)).toFixed(2) : '---';
+     msg += `💳 Pagamento: ${pagFinal}\n`;
+     msg += `💵 Valor em Reais (c/ taxa ${taxa.toFixed(2).replace('.',',')}%): R$ ${brl}\n`;
   } else {
-     msg += `💰 Pagamento: ${pag}\n`;
+     msg += `💰 Pagamento: ${pagFinal}\n`;
   }
 
   // Avisos de Pix/Alias (Bilíngue)

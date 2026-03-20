@@ -5309,6 +5309,8 @@ async function carregarConfiguracoes() {
   s("cfg-nome-pix", data.nome_pix);
   s("cfg-dados-alias", data.dados_alias);
   s("cfg-nome-alias", data.nome_alias);
+  s("cfg-taxa-debito",  data.taxa_debito  ?? 1.99);
+  s("cfg-taxa-credito", data.taxa_credito ?? 4.98);
 
   // Localização
   s("cfg-coord-lat", data.coord_lat);
@@ -5422,6 +5424,8 @@ async function salvarConfiguracoes() {
     nome_pix: g("cfg-nome-pix") || "",
     dados_alias: g("cfg-dados-alias") || "",
     nome_alias: g("cfg-nome-alias") || "",
+    taxa_debito:  parseFloat(g("cfg-taxa-debito"))  || 1.99,
+    taxa_credito: parseFloat(g("cfg-taxa-credito")) || 4.98,
     // Localização
     coord_lat: parseFloat(g("cfg-coord-lat")) || 0,
     coord_lng: parseFloat(g("cfg-coord-lng")) || 0,
@@ -5441,6 +5445,8 @@ async function salvarConfiguracoes() {
   NOME_PIX_CFG = dados.nome_pix;
   DADOS_ALIAS_CFG = dados.dados_alias;
   NOME_ALIAS_CFG = dados.nome_alias;
+  _taxaDebitoPDV  = dados.taxa_debito;
+  _taxaCreditoPDV = dados.taxa_credito;
 
   const { error } = await supa.from("configuracoes").update(dados).gt("id", 0);
   if (error) alert("Erro: " + error.message);
@@ -6172,7 +6178,10 @@ async function logout() {
 let carrinhoPDV = [];
 let produtosCachePDV = [];
 // Cotação carregada das configurações (fallback 1100)
-let _cotacaoPDV = 1100;
+let _cotacaoPDV     = 1100;
+let _taxaDebitoPDV  = 1.99;   // taxa_debito das configurações
+let _taxaCreditoPDV = 4.98;   // taxa_credito das configurações
+let _cartaoBRTipoPDV = 'debito'; // toggle débito/crédito no PDV
 
 async function carregarPDV() {
   // PDV carrega TODOS os produtos ativos (inclui pausado=null e pausado=false)
@@ -6193,12 +6202,14 @@ async function carregarPDV() {
     .order("ordem");
   produtosCatsPDV = cats || [];
 
-  // Carrega cotação atual das configurações
+  // Carrega cotação e taxas de cartão das configurações
   const { data: cfg } = await supa
     .from("configuracoes")
-    .select("cotacao_real")
+    .select("cotacao_real, taxa_debito, taxa_credito")
     .maybeSingle();
-  if (cfg && cfg.cotacao_real) _cotacaoPDV = Number(cfg.cotacao_real);
+  if (cfg?.cotacao_real) _cotacaoPDV = Number(cfg.cotacao_real);
+  if (cfg?.taxa_debito  != null) _taxaDebitoPDV  = Number(cfg.taxa_debito);
+  if (cfg?.taxa_credito != null) _taxaCreditoPDV = Number(cfg.taxa_credito);
 
   renderizarGridPDV();
   atualizarBarraMesasAtivas();
@@ -7631,6 +7642,39 @@ function atualizarInfoPagPDV(total) {
     const valorReais = (total / _cotacaoPDV).toFixed(2);
     infoBox.style.display = "block";
     infoBox.innerHTML = `<i class="fas fa-qrcode"></i> <strong>Cobrar em Pix: R$ ${valorReais}</strong>`;
+  } else if (pag === "CartaoBR" && total > 0) {
+    infoBox.style.display = "block";
+    function _renderBRPDV() {
+      const taxa = _cartaoBRTipoPDV === 'debito' ? _taxaDebitoPDV : _taxaCreditoPDV;
+      const brl  = _cotacaoPDV > 0 ? ((total / _cotacaoPDV) * (1 + taxa / 100)).toFixed(2) : '---';
+      infoBox.innerHTML = `
+        <div style="font-weight:700;font-size:0.82rem;margin-bottom:6px">💳🇧🇷 Cartão Brasileiro</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button type="button" onclick="window._setBRTipoPDV('debito')"
+            style="flex:1;padding:8px 4px;border-radius:7px;font-weight:700;cursor:pointer;font-size:0.78rem;
+                   border:2px solid ${_cartaoBRTipoPDV==='debito'?'#1a7a2e':'#ddd'};
+                   background:${_cartaoBRTipoPDV==='debito'?'#eafaf1':'#fff'};
+                   color:${_cartaoBRTipoPDV==='debito'?'#1a7a2e':'#777'}">
+            Débito<br><small style="font-weight:400">${_taxaDebitoPDV.toFixed(2).replace('.',',')}%</small>
+          </button>
+          <button type="button" onclick="window._setBRTipoPDV('credito')"
+            style="flex:1;padding:8px 4px;border-radius:7px;font-weight:700;cursor:pointer;font-size:0.78rem;
+                   border:2px solid ${_cartaoBRTipoPDV==='credito'?'#1a7a2e':'#ddd'};
+                   background:${_cartaoBRTipoPDV==='credito'?'#eafaf1':'#fff'};
+                   color:${_cartaoBRTipoPDV==='credito'?'#1a7a2e':'#777'}">
+            Crédito<br><small style="font-weight:400">${_taxaCreditoPDV.toFixed(2).replace('.',',')}%</small>
+          </button>
+        </div>
+        <div style="text-align:center;background:#fff;border:1.5px solid #1a7a2e;border-radius:8px;padding:8px">
+          <div style="font-size:0.75rem;color:#666;margin-bottom:2px">Valor a cobrar em reais (c/ taxa)</div>
+          <div style="font-size:1.15rem;font-weight:900;color:#1a7a2e">R$ ${brl}</div>
+        </div>`;
+    }
+    window._setBRTipoPDV = function(tipo) {
+      _cartaoBRTipoPDV = tipo;
+      _renderBRPDV();
+    };
+    _renderBRPDV();
   } else if (pag === "Multipagamento") {
     if (selectPag) selectPag.style.display = "none";
     if (boxMultiPDV) {
@@ -7777,6 +7821,11 @@ async function salvarPedidoBalcao() {
     document.getElementById("balcao-cliente").value.trim() || "Cliente";
   const tel = document.getElementById("balcao-telefone").value.trim() || "";
   let pag = document.getElementById("balcao-pag").value;
+
+  // Resolve CartaoBR → nome legível para banco e impressão
+  if (pag === 'CartaoBR') {
+    pag = _cartaoBRTipoPDV === 'debito' ? 'Cartão BR - Débito' : 'Cartão BR - Crédito';
+  }
 
   const nomeFinal = mesa
     ? `MESA ${mesa} - ${cli}`
@@ -8021,6 +8070,7 @@ async function salvarPedidoBalcao() {
   const multiPartesPDV = document.getElementById("multi-partes-pdv");
   if (multiPartesPDV) multiPartesPDV.innerHTML = "";
   _multiContadorPDV = 0;
+  _cartaoBRTipoPDV = 'debito'; // reset toggle CartaoBR
   document.getElementById("balcao-pag").value = "Efetivo";
   document.getElementById("balcao-pag").style.display = "";
   const boxMultiPDV = document.getElementById("box-multi-pdv");
