@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-jantinha-v3';
+const CACHE_NAME = 'app-jantinha-v4';
 
 const BLOCKED_ORIGINS = [
   'instagram.', 'fbcdn.net', 'facebook.com',
