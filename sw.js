@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-jantinha-v4';
+const CACHE_NAME = 'app-jantinha-v5';
 
 const BLOCKED_ORIGINS = [
   'instagram.', 'fbcdn.net', 'facebook.com',
@@ -77,4 +77,11 @@ self.addEventListener('fetch', (event) => {
         .catch(() => new Response('Offline', { status: 503 }));
     })
   );
+});
+
+// Permite que o novo SW assuma o controle imediatamente (sem esperar fechar abas)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

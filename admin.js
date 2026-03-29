@@ -1263,12 +1263,17 @@ async function calcularFinanceiro() {
       const nm = p.motoboys?.nome || "Sem Motoboy";
       if (!motoMap[nm]) {
         motoMap[nm] = { entregas: 0, frete_total: 0 };
-        custoEntregas += AJUDA_COMBUSTIVEL || 0;
+        // NÃO soma combustível aqui — evita double-count quando o mesmo motoboy
+        // aparece como "Sem Motoboy" por pedidos PDV sem motoboy_id preenchido
       }
       motoMap[nm].entregas++;
       motoMap[nm].frete_total += taxa;
     }
   });
+
+  // Soma ajuda de combustível UMA vez por motoboy único identificado no período
+  const qtdMotoboyUnicos = Object.keys(motoMap).length;
+  custoEntregas += (AJUDA_COMBUSTIVEL || 0) * qtdMotoboyUnicos;
 
   let totalSaidas = 0,
     totalEntradas = 0,

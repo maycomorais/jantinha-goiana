@@ -866,8 +866,33 @@ window.addEventListener('DOMContentLoaded', () => {
     </script>
     <script>
         // Registro do Service Worker para PWA
+        // Detecta atualização e força troca de cache sem precisar fechar a aba
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(() => {});
+            navigator.serviceWorker.register('sw.js').then((reg) => {
+                // Verifica atualização imediatamente e a cada 60s
+                reg.update();
+                setInterval(() => reg.update(), 60000);
+
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Novo SW instalado — manda sinal para ativar imediatamente
+                            newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    });
+                });
+            }).catch(() => {});
+
+            // Quando o SW novo assumir o controle, recarrega a página para pegar arquivos frescos
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            });
         }
         
         // ===== PWA INSTALL PROMPT =====

@@ -214,6 +214,7 @@ let carrinho = [];
 let freteCalculado = 0;
 let freteMotoboy = 0; // Valor pago ao motoboy (da tabela de frete)
 let localCliente = null;
+let LIMITE_DISTANCIA_KM = null; // Carregado do banco em verificarHorario()
 let modoEntrega = 'delivery';
 let prodAtual = null, optAtual = null, qtd = 1;
 let itensMontagem = {};
@@ -308,6 +309,7 @@ async function verificarHorario() {
   if (data.taxa_debito  != null) TAXA_DEBITO_BR  = Number(data.taxa_debito);
   if (data.taxa_credito != null) TAXA_CREDITO_BR = Number(data.taxa_credito);
   if (data.tabela_frete && Array.isArray(data.tabela_frete)) TABELA_FRETE = data.tabela_frete;
+  if (data.limite_distancia_km != null) LIMITE_DISTANCIA_KM = parseFloat(data.limite_distancia_km) || null;
 
   // ── Dados de pagamento do banco ────────────────────────────────
   if (data.chave_pix)    CHAVE_PIX    = data.chave_pix;
@@ -1731,7 +1733,7 @@ let _multiContador = 0;
 
 const METODOS_PAG = [
   { value: 'Efetivo',       label: '💵 Efectivo' },
-  { value: 'Cartao',        label: '💳 Tarjeta' },
+  // { value: 'Cartao', label: '💳 Tarjeta' }, // Cartão PY desativado nesta loja
   { value: 'Pix',           label: '🟢 Pix (BR)' },
   { value: 'Transferencia', label: '🏦 Alias/Transferencia' },
 ];
@@ -1954,10 +1956,22 @@ function _executarGetPosition(btn, msg, boxErro) {
     (position) => {
       localCliente = { lat: position.coords.latitude, lng: position.coords.longitude };
       const dist = calcularDistancia(COORD_LOJA.lat, COORD_LOJA.lng, localCliente.lat, localCliente.lng);
-      
+
+      // === VERIFICAÇÃO DE LIMITE DE ENTREGA ===
+      if (LIMITE_DISTANCIA_KM && dist > LIMITE_DISTANCIA_KM) {
+        msg.innerHTML = `<span style="color:#e74c3c">❌ Fora da área de entrega. Atendemos até ${LIMITE_DISTANCIA_KM}km. Sua distância: ${dist.toFixed(1)}km.</span>`;
+        boxErro.style.display = 'none';
+        btn.innerText = '📍 Calcular Frete';
+        btn.disabled = false;
+        freteCalculado = 0;
+        localCliente = null; // impede finalizar o pedido
+        return;
+      }
+
       // === TABELA DE FRETE DINÂMICA (configurada no admin) ===
-      // Faixas: [0-3], [3.1-4], [4.1-5], ..., [19.1-20], >20 = a combinar
-      const LIMITES_KM = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+      // Faixas: [0-1], [1.1-2], ..., [19.1-20], >20 = a combinar
+      // IMPORTANTE: idêntico ao admin.js e index.ts para não divergir
+      const LIMITES_KM = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
       let freteIndex = -1;
       for (let i = 0; i < LIMITES_KM.length; i++) {
         if (dist <= LIMITES_KM[i]) { freteIndex = i; break; }
