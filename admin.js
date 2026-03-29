@@ -1271,8 +1271,8 @@ async function calcularFinanceiro() {
     }
   });
 
-  // Soma ajuda de combustível UMA vez por motoboy único identificado no período
-  const qtdMotoboyUnicos = Object.keys(motoMap).length;
+  // Soma ajuda de combustível UMA vez por motoboy IDENTIFICADO (exclui "Sem Motoboy")
+  const qtdMotoboyUnicos = Object.keys(motoMap).filter(n => n !== "Sem Motoboy").length;
   custoEntregas += (AJUDA_COMBUSTIVEL || 0) * qtdMotoboyUnicos;
 
   let totalSaidas = 0,
@@ -1333,11 +1333,15 @@ async function calcularFinanceiro() {
         '<tr><td colspan="4" style="text-align:center;color:#999">Nenhuma entrega no período</td></tr>';
     } else {
       for (const [nome, d] of Object.entries(motoMap)) {
-        const comb = AJUDA_COMBUSTIVEL || 0;
+        const semNome = nome === "Sem Motoboy";
+        const comb = semNome ? 0 : (AJUDA_COMBUSTIVEL || 0);
         const tot = d.frete_total + comb;
+        const combLabel = semNome
+          ? '<span style="color:#aaa;font-size:0.78rem">sem combustível</span>'
+          : `+ comb. ${fmt(comb)}`;
         tbM.innerHTML += `<tr>
           <td>${nome}</td><td>${d.entregas}</td>
-          <td style="font-size:0.82rem">Frete: ${fmt(d.frete_total)} + comb. ${fmt(comb)}</td>
+          <td style="font-size:0.82rem">Frete: ${fmt(d.frete_total)} ${combLabel}</td>
           <td><strong>${fmt(tot)}</strong></td></tr>`;
       }
     }
