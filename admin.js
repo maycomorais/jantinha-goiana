@@ -1277,10 +1277,19 @@ async function calcularFinanceiro() {
 
   let totalSaidas = 0,
     totalEntradas = 0,
-    totalSangria = 0;
+    totalSangria = 0,
+    totalDespesasGerais = 0,
+    totalFuncionarios = 0;
   (caixa || []).forEach((c) => {
     const v = safeNum(c.valor);
-    if (c.tipo === "despesa") totalSaidas += v;
+    if (c.tipo === "despesa") {
+      totalSaidas += v;
+      if (c.tipo_despesa === "pagamento_funcionario") {
+        totalFuncionarios += v;
+      } else {
+        totalDespesasGerais += v;
+      }
+    }
     if (c.tipo === "sangria") {
       totalSaidas += v;
       totalSangria += v;
@@ -1299,6 +1308,8 @@ async function calcularFinanceiro() {
     totalEfetivo,
     qtdPedidos,
     totalSangria,
+    totalDespesasGerais,
+    totalFuncionarios,
   };
 
   const lucro = faturamento + totalEntradas - custoEntregas - totalSaidas;
@@ -1315,6 +1326,14 @@ async function calcularFinanceiro() {
   setV("total-efetivo", fmt(totalEfetivo));
   setV("card-qtd-pedidos", qtdPedidos);
   setV("card-ticket-medio", fmt(qtdPedidos > 0 ? faturamento / qtdPedidos : 0));
+  // Novos cards de saídas detalhadas
+  setV("card-sangria",        fmt(totalSangria));
+  setV("card-despesas-gerais",fmt(totalDespesasGerais));
+  setV("card-funcionarios",   fmt(totalFuncionarios));
+  setV("card-entradas",       fmt(totalEntradas));
+  // Atualiza cor do lucro
+  const elLucro = document.getElementById("card-lucro");
+  if (elLucro) elLucro.style.color = lucro >= 0 ? "#27ae60" : "#e74c3c";
 
   // Identificação do caixa atual
   const badgeCaixa = document.getElementById("badge-caixa-operador");
@@ -1921,24 +1940,30 @@ async function fecharCaixaResumo() {
     console.warn("Aviso fechamento:", e.message);
   }
 
+  const lucroFormatado = lucro >= 0 ? fmt(lucro) : `- ${fmt(Math.abs(lucro))}`;
   alert(`📊 FECHAMENTO DO DIA
 ═══════════════════════════
-Faturamento Total: ${fmt(s.faturamento)}
+💰 Faturamento: ${fmt(s.faturamento)}
 
-💰 Por Método:
+Por Método:
   💵 Dinheiro:      ${fmt(s.totalEfetivo)}
   📱 Pix:           ${fmt(s.totalPix)}
   💳 Cartão:        ${fmt(s.totalCartao)}
   🏦 Transferência: ${fmt(s.totalTransf)}
 
 📦 Pedidos: ${s.qtdPedidos}
-🏍️ Custo Entregas: ${fmt(s.custoEntregas)}
-💸 Saídas: ${fmt(s.totalSaidas)}
-➕ Entradas: ${fmt(s.totalEntradas)}
+
+💸 Saídas detalhadas:
+  🏍️ Custo Entregas:   ${fmt(s.custoEntregas)}
+  📦 Despesas Gerais:  ${fmt(s.totalDespesasGerais || 0)}
+  👷 Pag. Funcionários:${fmt(s.totalFuncionarios || 0)}
+  🩸 Sangria:          ${fmt(s.totalSangria)}
+
+➕ Entradas (Suprimento/Abertura): ${fmt(s.totalEntradas)}
 ═══════════════════════════
-💵 RESULTADO: ${fmt(lucro)}
+🏦 RESULTADO OPERACIONAL: ${lucroFormatado}
 ═══════════════════════════
-✅ Dinheiro na gaveta: ${fmt(s.totalEfetivo)}
+✅ Dinheiro esperado na gaveta: ${fmt(s.totalEfetivo)}
 Fechamento registrado!`);
 
   // Zera os cards na tela
@@ -1967,7 +1992,13 @@ Fechamento registrado!`);
     totalCartao: 0,
     totalEfetivo: 0,
     qtdPedidos: 0,
+    totalSangria: 0,
+    totalDespesasGerais: 0,
+    totalFuncionarios: 0,
   };
+  ["card-sangria","card-despesas-gerais","card-funcionarios","card-entradas"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.innerText = "Gs 0";
+  });
 }
 
 // =========================================
