@@ -1365,6 +1365,9 @@ async function calcularFinanceiro() {
       }
     }
   }
+
+  // Tabela de despesas registradas
+  renderDespesasCaixa(caixa || [], fmt, ehGestor);
 }
 
 // ── Verifica bloqueio por sangria limite ───────────────────────────
@@ -2002,8 +2005,133 @@ Fechamento registrado!`);
 }
 
 // =========================================
-// EXPORTAÇÕES: CSV (Power BI) e PDF
+// DESPESAS: LISTAGEM, EDIÇÃO E EXCLUSÃO
 // =========================================
+
+const _TIPO_DESPESA_LABELS = {
+  despesas_gerais:       "📦 Despesas Gerais",
+  contas_fixas:          "🏠 Contas Fixas",
+  pagamento_fornecedor:  "🤝 Fornecedor",
+  pagamento_funcionario: "👷 Funcionário",
+  pagamento_terceiros:   "👥 Terceiros",
+  manutencao:            "🔧 Manutenção",
+  retirada:              "💵 Retirada",
+  motoboy:               "🛵 Motoboy",
+  outro:                 "✏️ Outro",
+};
+
+function renderDespesasCaixa(movs, fmt, ehGestor) {
+  const tbody = document.getElementById("lista-despesas-caixa");
+  if (!tbody) return;
+
+  const despesas = movs.filter(m => m.tipo === "despesa");
+
+  if (!despesas.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Nenhuma despesa no período</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = despesas.map(d => {
+    const dt = d.created_at
+      ? new Date(d.created_at).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })
+      : "—";
+    const tipoLabel = _TIPO_DESPESA_LABELS[d.tipo_despesa] || d.tipo_despesa || "—";
+    const descExtra = d.tipo_despesa === "outro" && d.descricao_outro ? ` (${d.descricao_outro})` : "";
+    const obs = d.descricao || "—";
+    const operador = (d.usuario_email || "—").split("@")[0];
+    const valor = parseFloat(d.valor) || 0;
+
+    // Dados codificados para edição
+    const dadosEdit = encodeURIComponent(JSON.stringify({
+      id: d.id,
+      valor: d.valor,
+      tipo_despesa: d.tipo_despesa || "despesas_gerais",
+      descricao_outro: d.descricao_outro || "",
+      descricao: d.descricao || "",
+    }));
+
+    return `<tr>
+      <td style="white-space:nowrap;color:#666;font-size:0.82rem">${dt}</td>
+      <td><span style="background:#fdecea;color:#a93226;padding:2px 7px;border-radius:10px;font-size:0.78rem;white-space:nowrap">${tipoLabel}${descExtra}</span></td>
+      <td style="color:#555">${obs}</td>
+      <td style="color:#888;font-size:0.82rem">${operador}</td>
+      <td style="text-align:right;font-weight:700;color:#c0392b;white-space:nowrap">${fmt(valor)}</td>
+      <td style="text-align:center;white-space:nowrap">
+        <button onclick="abrirEditarDespesa('${dadosEdit}')"
+          style="background:#3498db;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem;margin-right:4px">
+          ✏️ Editar
+        </button>
+        <button onclick="excluirDespesa(${d.id})"
+          style="background:#e74c3c;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem">
+          🗑️ Excluir
+        </button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function abrirEditarDespesa(dadosEncoded) {
+  try {
+    const d = JSON.parse(decodeURIComponent(dadosEncoded));
+    document.getElementById("edit-despesa-id").value       = d.id;
+    document.getElementById("edit-despesa-valor").value    = d.valor;
+    document.getElementById("edit-despesa-desc").value     = d.descricao;
+    const tipoSel = document.getElementById("edit-despesa-tipo");
+    if (tipoSel) tipoSel.value = d.tipo_despesa || "despesas_gerais";
+    const outroBox = document.getElementById("edit-box-outro");
+    const outroInput = document.getElementById("edit-despesa-outro");
+    if (d.tipo_despesa === "outro") {
+      if (outroBox) outroBox.style.display = "block";
+      if (outroInput) outroInput.value = d.descricao_outro || "";
+    } else {
+      if (outroBox) outroBox.style.display = "none";
+      if (outroInput) outroInput.value = "";
+    }
+    document.getElementById("modal-editar-despesa").style.display = "flex";
+  } catch(e) {
+    alert("Erro ao abrir edição: " + e.message);
+  }
+}
+
+async function salvarEdicaoDespesa() {
+  const id    = document.getElementById("edit-despesa-id").value;
+  const valor = parseFloat(document.getElementById("edit-despesa-valor").value);
+  const desc  = document.getElementById("edit-despesa-desc").value.trim();
+  const tipo  = document.getElementById("edit-despesa-tipo").value;
+
+  if (!id || !valor || valor <= 0) {
+    alert("Preencha o valor corretamente.");
+    return;
+  }
+
+  let descOutro = null;
+  if (tipo === "outro") {
+    descOutro = document.getElementById("edit-despesa-outro")?.value?.trim() || "";
+    if (!descOutro) { alert("Descreva o tipo da despesa."); return; }
+  }
+
+  const update = {
+    valor,
+    descricao: desc,
+    tipo_despesa: tipo,
+    descricao_outro: descOutro,
+  };
+
+  const { error } = await supa.from("movimentacoes_caixa").update(update).eq("id", id);
+  if (error) { alert("Erro ao salvar: " + error.message); return; }
+
+  fecharModal("modal-editar-despesa");
+  calcularFinanceiro();
+}
+
+async function excluirDespesa(id) {
+  if (!confirm("Excluir esta despesa? Esta ação não pode ser desfeita.")) return;
+  const { error } = await supa.from("movimentacoes_caixa").delete().eq("id", id);
+  if (error) { alert("Erro ao excluir: " + error.message); return; }
+  calcularFinanceiro();
+}
+
+
 
 async function _buscarDadosRelatorio() {
   const elI = document.getElementById('fin-inicio');

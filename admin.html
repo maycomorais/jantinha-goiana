@@ -677,6 +677,30 @@
     </div>
   </div>
 
+  <!-- ===== DESPESAS REGISTRADAS ===== -->
+  <div class="card" style="margin-top:12px;padding:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="margin:0;color:#555;">🧾 Despesas Registradas</h3>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="table" style="font-size:0.88rem">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Tipo</th>
+            <th>Descrição</th>
+            <th>Operador</th>
+            <th style="text-align:right">Valor</th>
+            <th style="text-align:center">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="lista-despesas-caixa">
+          <tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Nenhuma despesa no período</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ===== ENTRADAS DE CAIXA ===== -->
   <div class="card" style="margin-top:12px;padding:20px;">
     <h3 style="margin-bottom:14px;color:#555;">➕ Entradas de Caixa</h3>
@@ -1888,6 +1912,45 @@
         </div>
       </div>
     </div>
+
+  <!-- ===== MODAL EDITAR DESPESA ===== -->
+  <div id="modal-editar-despesa" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="max-width:420px">
+      <h3>✏️ Editar Despesa</h3>
+      <input type="hidden" id="edit-despesa-id">
+      <div class="form-group">
+        <label>Valor (Gs)</label>
+        <input type="number" id="edit-despesa-valor" class="form-control" placeholder="Ex: 50000" min="1">
+      </div>
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="edit-despesa-tipo" class="form-control" onchange="document.getElementById('edit-box-outro').style.display=this.value==='outro'?'block':'none'">
+          <option value="despesas_gerais">📦 Despesas Gerais</option>
+          <option value="contas_fixas">🏠 Contas Fixas (água, luz, aluguel...)</option>
+          <option value="pagamento_fornecedor">🤝 Pagamento de Fornecedor</option>
+          <option value="pagamento_funcionario">👷 Pagamento de Funcionário</option>
+          <option value="pagamento_terceiros">👥 Pagamento a Terceiros</option>
+          <option value="manutencao">🔧 Manutenção</option>
+          <option value="retirada">💵 Retirada / Pro-Labore</option>
+          <option value="motoboy">🛵 Pagamento Motoboy</option>
+          <option value="outro">✏️ Outro (especificar)</option>
+        </select>
+        <div id="edit-box-outro" style="display:none;margin-top:8px">
+          <input type="text" id="edit-despesa-outro" class="form-control" placeholder="Descreva o tipo de despesa">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Observação</label>
+        <input type="text" id="edit-despesa-desc" class="form-control" placeholder="Detalhes opcionais">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="fecharModal('modal-editar-despesa')">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarEdicaoDespesa()">
+          <i class="fas fa-save"></i> Salvar Alterações
+        </button>
+      </div>
+    </div>
+  </div>
 
     <!-- MODAL RELATÓRIO DETALHADO DE PEDIDOS -->
 <div id="modal-relatorio" class="modal-overlay" style="display:none; align-items:flex-start; padding:10px; overflow-y:auto;">
