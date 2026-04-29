@@ -4,8 +4,8 @@
 //   supabase.com → Settings → API
 // ─────────────────────────────────────────────────────────────
 
-const _SUPABASE_URL = 'https://hyqbuoskykhfbfnjagmp.supabase.co';
-const _SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cWJ1b3NreWtoZmJmbmphZ21wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODE3NTEsImV4cCI6MjA4OTI1Nzc1MX0.MnnhuJwjSWKOHpW0_6yvddQuDqGPjZ2LiBD3XOI9L8w';
+const _SUPABASE_URL = 'https://dwphwdhocxeqhgboivbl.supabase.co';
+const _SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3cGh3ZGhvY3hlcWhnYm9pdmJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0ODkxMjIsImV4cCI6MjA5MzA2NTEyMn0.e0KbOOEh9jtK8SCulobz-AZgcXlwkQA8dBTIZMeDy6E';
 
 if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
     console.error('ERRO CRÍTICO: Biblioteca Supabase não carregou. Verifique sua conexão.');
