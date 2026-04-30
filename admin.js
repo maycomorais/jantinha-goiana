@@ -2564,6 +2564,43 @@ function editarProduto(p) {
 
 // (deletarProduto defined below alongside pausarProduto)
 
+// =========================================
+// CLOUDINARY — Upload utilitário isolado
+// =========================================
+// Cloud Name : dsxwnbj0o
+// Upload Preset (unsigned): ml_default
+// Endpoint   : https://api.cloudinary.com/v1_1/dsxwnbj0o/image/upload
+//
+// Recebe um File, faz POST via FormData e retorna a secure_url gerada.
+// Lança um Error descritivo em caso de falha — o chamador deve usar try/catch.
+async function uploadImageToCloudinary(file) {
+  const CLOUD_NAME    = 'dsxwnbj0o';
+  const UPLOAD_PRESET = 'ml_default';
+  const ENDPOINT      = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', UPLOAD_PRESET);
+
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => response.statusText);
+    throw new Error(`Cloudinary upload falhou (HTTP ${response.status}): ${errText}`);
+  }
+
+  const result = await response.json();
+
+  if (!result.secure_url) {
+    throw new Error('Cloudinary não retornou uma URL válida: ' + JSON.stringify(result));
+  }
+
+  return result.secure_url;
+}
+
 function previewUpload(input) {
   if (input.files && input.files[0]) {
     const reader = new FileReader();
@@ -2586,10 +2623,19 @@ async function salvarProduto() {
 
     if (fileInput.files.length > 0) {
       const file = fileInput.files[0];
-      const nomeArq = Date.now() + "-" + file.name.replace(/\s+/g, "-");
-      await supa.storage.from("produtos").upload(nomeArq, file);
-      const { data } = supa.storage.from("produtos").getPublicUrl(nomeArq);
-      urlFinal = data.publicUrl;
+      const uploadingMsg = document.getElementById("box-preview");
+      // Feedback visual de upload
+      btn.innerText = "Enviando imagem...";
+      try {
+        urlFinal = await uploadImageToCloudinary(file);
+      } catch (uploadErr) {
+        alert("❌ Erro ao enviar imagem para o Cloudinary:\n" + uploadErr.message + "\n\nO produto NÃO foi salvo. Corrija a imagem e tente novamente.");
+        return; // Aborta — não salva no Supabase com imagem quebrada
+      }
+      // Atualiza preview
+      const prevImg = document.getElementById("img-preview");
+      if (prevImg) prevImg.src = urlFinal;
+      if (uploadingMsg) uploadingMsg.style.display = "block";
     }
 
     const tipo = document.getElementById("prod-tipo-builder").value || "padrao";
@@ -3524,25 +3570,35 @@ function addPizzaSabor(dados = {}) {
 async function uploadSaborImagem(fileInput, row) {
   if (!fileInput.files.length) return;
   const file = fileInput.files[0];
-  const nomeArq = `sabores/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
   fileInput.disabled = true;
+
+  // Feedback visual: troca o label pelo spinner
+  const labelEl = fileInput.closest("label");
+  const originalLabelHtml = labelEl ? labelEl.innerHTML : "";
+  if (labelEl) labelEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
   try {
-    const { error } = await supa.storage.from("produtos").upload(nomeArq, file);
-    if (error) throw error;
-    const { data } = supa.storage.from("produtos").getPublicUrl(nomeArq);
+    const publicUrl = await uploadImageToCloudinary(file);
+
     const inp =
       row.querySelector('[data-f="simg"]') ||
       row.querySelector('[data-f="img"]');
-    if (inp) inp.value = data.publicUrl;
-    const prev = row.querySelector("img.img-preview-mini");
+    if (inp) inp.value = publicUrl;
+
+    // Atualiza preview miniatura se existir
+    let prev = row.querySelector("img.img-preview-mini");
+    if (!prev) {
+      prev = row.querySelector("img");
+    }
     if (prev) {
-      prev.src = data.publicUrl;
+      prev.src = publicUrl;
       prev.style.display = "block";
     }
   } catch (e) {
-    alert("Erro ao enviar imagem: " + e.message);
+    alert("❌ Erro ao enviar imagem:\n" + e.message);
   } finally {
     fileInput.disabled = false;
+    if (labelEl) labelEl.innerHTML = originalLabelHtml;
   }
 }
 
@@ -5658,15 +5714,13 @@ async function salvarBanner(num = 1) {
 
     if (fileInput?.files?.length) {
       const file = fileInput.files[0];
-      const nomeArq = `banner${suf}_${Date.now()}.${file.name.split(".").pop()}`;
-      const { error: uploadErr } = await supa.storage
-        .from("produtos")
-        .upload(nomeArq, file, { upsert: true });
-      if (uploadErr) throw uploadErr;
-      const { data: urlData } = supa.storage
-        .from("produtos")
-        .getPublicUrl(nomeArq);
-      urlFinal = urlData.publicUrl;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando para Cloudinary...';
+      try {
+        urlFinal = await uploadImageToCloudinary(file);
+      } catch (uploadErr) {
+        alert("❌ Erro ao enviar imagem para o Cloudinary:\n" + uploadErr.message + "\n\nO banner NÃO foi salvo.");
+        return;
+      }
     }
 
     if (!urlFinal) {
@@ -5961,29 +6015,23 @@ async function salvarPersonalizacao() {
     // Upload do ícone se houver arquivo selecionado
     const iconeFile = document.getElementById("cfg-icone-file")?.files?.[0];
     if (iconeFile) {
-      const ext = iconeFile.name.split(".").pop();
-      const nomeArq = `icone-loja-${Date.now()}.${ext}`;
-      const { error: upErr } = await supa.storage
-        .from("produtos")
-        .upload(nomeArq, iconeFile, { upsert: true });
-      if (upErr) throw new Error("Erro no upload: " + upErr.message);
-      const { data: urlData } = supa.storage
-        .from("produtos")
-        .getPublicUrl(nomeArq);
-      dados.icone_url = urlData.publicUrl;
-      dados.logo_url = urlData.publicUrl;
-      // Atualiza preview
-      const prev = document.getElementById("cfg-icone-preview");
-      const box = document.getElementById("cfg-icone-preview-box");
-      if (prev) {
-        prev.src = dados.icone_url;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando ícone...';
+      try {
+        const publicUrl = await uploadImageToCloudinary(iconeFile);
+        dados.icone_url = publicUrl;
+        dados.logo_url  = publicUrl;
+        // Atualiza preview
+        const prev = document.getElementById("cfg-icone-preview");
+        const box  = document.getElementById("cfg-icone-preview-box");
+        if (prev) prev.src = publicUrl;
+        if (box)  box.style.display = "block";
+        // Preenche campo URL
+        const urlInp = document.getElementById("cfg-logo-url");
+        if (urlInp) urlInp.value = publicUrl;
+      } catch (uploadErr) {
+        alert("❌ Erro ao enviar ícone para o Cloudinary:\n" + uploadErr.message + "\n\nA personalização NÃO foi salva.");
+        return;
       }
-      if (box) {
-        box.style.display = "block";
-      }
-      // Preenche campo URL
-      const urlInp = document.getElementById("cfg-logo-url");
-      if (urlInp) urlInp.value = dados.icone_url;
     }
 
     if (Object.keys(dados).length > 0) {
@@ -6014,16 +6062,7 @@ async function _uploadLogoIdentidade(input) {
   if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
 
   try {
-    const ext = file.name.split(".").pop();
-    const nomeArq = `logo-${Date.now()}.${ext}`;
-    const { error: upErr } = await supa.storage
-      .from("produtos")
-      .upload(nomeArq, file, { upsert: true });
-    if (upErr) throw upErr;
-    const { data: urlData } = supa.storage
-      .from("produtos")
-      .getPublicUrl(nomeArq);
-    const url = urlData.publicUrl;
+    const url = await uploadImageToCloudinary(file);
 
     // Preenche o campo de URL de texto
     const urlInput = document.getElementById("cfg-logo-url");
@@ -6031,11 +6070,11 @@ async function _uploadLogoIdentidade(input) {
 
     // Mostra preview
     const preview = document.getElementById("cfg-logo-preview-identidade");
-    const img = document.getElementById("cfg-logo-img-identidade");
-    if (img) img.src = url;
+    const img     = document.getElementById("cfg-logo-img-identidade");
+    if (img)     img.src = url;
     if (preview) preview.style.display = "block";
   } catch (e) {
-    alert("Erro ao enviar imagem: " + e.message);
+    alert("❌ Erro ao enviar imagem para o Cloudinary:\n" + e.message);
   } finally {
     if (btn) btn.innerHTML = originalHtml;
   }
