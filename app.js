@@ -250,11 +250,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const overlay = document.getElementById('loading-overlay');
 
   try {
-    // 1. Carrega dados salvos (Nome, Tel, Último Pedido)
+    // 1. Carrega dados do usuário (Nome, Tel)
+    // O último pedido é renderizado APÓS o menu para filtrar
+    // itens que não estão mais disponíveis no cardápio.
     carregarDadosLocal();
 
     // 2. Renderiza o Menu vindo do Banco de Dados
     await renderMenu();
+
+    // 2b. Exibe o "último pedido" somente após MENU estar populado —
+    //     descarta itens que não estejam mais ativos no cardápio.
+    renderizarUltimoPedido();
 
     // 3. Verifica Horário de Funcionamento e Banner
     await verificarHorario();
@@ -2418,38 +2424,88 @@ function _abrirZapEFechar(msg, numeroPedido, modal, resolve) {
 // 9. DADOS LOCAIS & REPETIR PEDIDO (Funções Restauradas)
 // ==========================================
 function carregarDadosLocal() {
+  // Carrega apenas os dados de identificação do usuário (nome e telefone).
+  // A exibição do último pedido é feita em renderizarUltimoPedido(),
+  // chamada após renderMenu() para poder cruzar com o cardápio ativo.
   const user = JSON.parse(localStorage.getItem('app_user'));
   if (user) {
     if (document.getElementById('cli-nome')) document.getElementById('cli-nome').value = user.nome;
     if (document.getElementById('cli-tel')) document.getElementById('cli-tel').value = user.tel;
   }
+}
 
+/**
+ * Exibe o bloco "Pedir de novo" filtrando contra o MENU atual.
+ * Deve ser chamada APÓS renderMenu() para que MENU já esteja populado.
+ * Itens cujo id não exista mais no cardápio ativo são silenciosamente
+ * descartados da lista exibida e também do que será adicionado ao carrinho.
+ */
+function renderizarUltimoPedido() {
   const last = JSON.parse(localStorage.getItem('app_last'));
-  const box = document.getElementById('buy-again-container');
+  const box  = document.getElementById('buy-again-container');
 
-  if (last && Array.isArray(last) && last.length > 0) {
-    if (box) {
-      box.style.display = 'block';
-      const ul = document.getElementById('last-order-list');
-      if (ul) {
-        ul.innerHTML = '';
-        last.forEach((i) => {
-          ul.innerHTML += `<li style="border-bottom: 1px dashed #eee; padding: 5px 0;"><b>${i.qtd}x</b> ${i.nome}</li>`;
-        });
-      }
-    }
-  } else {
+  if (!last || !Array.isArray(last) || last.length === 0) {
     if (box) box.style.display = 'none';
+    return;
+  }
+
+  // Monta índice plano de todos os produtos ativos no MENU
+  const produtosAtivos = {};
+  for (const cat in MENU) {
+    MENU[cat].forEach((p) => { produtosAtivos[p.id] = p; });
+  }
+
+  // Filtra apenas os itens que ainda existem no cardápio
+  const disponiveis = last.filter((i) => produtosAtivos[i.id]);
+
+  if (disponiveis.length === 0) {
+    // Nenhum item do pedido anterior está mais disponível — oculta o bloco
+    if (box) box.style.display = 'none';
+    return;
+  }
+
+  if (box) {
+    box.style.display = 'block';
+    const ul = document.getElementById('last-order-list');
+    if (ul) {
+      ul.innerHTML = '';
+      disponiveis.forEach((i) => {
+        ul.innerHTML += `<li style="border-bottom: 1px dashed #eee; padding: 5px 0;"><b>${i.qtd}x</b> ${i.nome}</li>`;
+      });
+    }
   }
 }
 
 function repetirPedido() {
   const last = JSON.parse(localStorage.getItem('app_last'));
-  if (last && Array.isArray(last) && last.length > 0) {
-    carrinho = last;
-    updateUI();
-    abrirCheckout();
+  if (!last || !Array.isArray(last) || last.length === 0) return;
+
+  // Monta índice plano de todos os produtos ativos no MENU
+  const produtosAtivos = {};
+  for (const cat in MENU) {
+    MENU[cat].forEach((p) => { produtosAtivos[p.id] = p; });
   }
+
+  // Filtra itens do último pedido contra o cardápio atual
+  const disponiveis  = last.filter((i) =>  produtosAtivos[i.id]);
+  const indisponiveis = last.filter((i) => !produtosAtivos[i.id]);
+
+  if (disponiveis.length === 0) {
+    alert('Nenhum item do seu último pedido está disponível no cardápio atual.');
+    return;
+  }
+
+  if (indisponiveis.length > 0) {
+    const nomes = indisponiveis.map((i) => `• ${i.nome}`).join('\n');
+    const continuar = confirm(
+      `Os itens abaixo não estão mais disponíveis e serão removidos:\n\n${nomes}\n\nDeseja continuar com os demais itens?`
+    );
+    if (!continuar) return;
+  }
+
+  carrinho = disponiveis;
+  updateUI();
+  abrirCheckout();
 }
 
 function clicarBanner(idProduto) {
